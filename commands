@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -eo pipefail; [[ $DOKKU_TRACE ]] && set -x
+
+case "$1" in
+  rake-deploy)
+    [[ -z $2 ]] && echo "Please specify an app to run the command on" && exit 1
+    [[ ! -d "$DOKKU_ROOT/$2" ]] && echo "App $2 does not exist" && exit 1
+    APP="$2"
+
+    dokku rake-deploy:setup $APP
+    echo "=== $APP Post-Deploy Rake Hooks"
+    cat "$DOKKU_ROOT/$APP/RAKE-DEPLOY"
+    ;;
+
+  rake-deploy:setup)
+    [[ -z $2 ]] && echo "Please specify an app to run the command on" && exit 1
+    [[ ! -d "$DOKKU_ROOT/$2" ]] && echo "App $2 does not exist" && exit 1
+    APP="$2"; RAKE_DEPLOY_PATH="$DOKKU_ROOT/$APP/RAKE-DEPLOY"
+
+    if [[ ! -f $RAKE_DEPLOY_PATH ]]; then
+      echo "-----> Creating new $RAKE_DEPLOY_PATH..."
+      touch $RAKE_DEPLOY_PATH
+    fi
+    ;;
+
+  rake-deploy:set)
+    [[ -z $2 ]] && echo "Please specify an app to run the command on" && exit 1
+    [[ ! -d "$DOKKU_ROOT/$2" ]] && echo "App $2 does not exist" && exit 1
+    APP="$2"
+
+    if [[ -z $3 ]]; then
+      echo "Usage: dokku $1 $APP TASK"
+      echo "Must specify TASK."
+      exit 1
+    fi
+
+    dokku rake-deploy:setup $APP
+    shift 2
+    echo "$*" > "$DOKKU_ROOT/$APP/RAKE-DEPLOY"
+    echo "-----> Added $* to $APP"
+
+    ;;
+
+  rake-deploy:clear)
+    [[ -z $2 ]] && echo "Please specify an app to run the command on" && exit 1
+    [[ ! -d "$DOKKU_ROOT/$2" ]] && echo "App $2 does not exist" && exit 1
+    APP="$2"
+
+    rm -f "$DOKKU_ROOT/$APP/RAKE-DEPLOY"
+    dokku rake-deploy:setup $APP
+    echo "-----> Cleared rake post-deploy tasks in $APP"
+
+    ;;
+
+  rake-deploy:remove)
+    [[ -z $2 ]] && echo "Please specify an app to run the command on" && exit 1
+    [[ ! -d "$DOKKU_ROOT/$2" ]] && echo "App $2 does not exist" && exit 1
+    APP="$2"
+
+    if [[ -z $3 ]]; then
+      echo "Usage: dokku $1 $2 TASK"
+      echo "Must specify TASK."
+      exit 1
+    fi
+
+    dokku rake-deploy:setup $APP
+    sed -i "/^$3$/d" "$DOKKU_ROOT/$APP/RAKE-DEPLOY"
+    echo "-----> Removed $3 from $APP"
+
+    ;;
+
+  help | rake-deploy:help)
+    cat && cat<<EOF
+    rake-deploy <app>                               List post-deploy rake task for app
+    rake-deploy:set <app> TASK [TASK...]            Set a custom post-deploy rake task for an app
+    rake-deploy:clear <app>                         Clear all post-deploy rake tasks for an app
+EOF
+    ;;
+
+  *)
+    exit $DOKKU_NOT_IMPLEMENTED_EXIT
+    ;;
+
+esac
